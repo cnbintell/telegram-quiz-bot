@@ -1,10 +1,10 @@
 import os
 import io
 import logging
+import requests
 from pypdf import PdfReader
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import google.generativeai as genai
 
 # Logging setup
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -13,10 +13,6 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))
-
-# Gemini API Configure
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
@@ -60,9 +56,9 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text("❌ PDF ထဲတွင် စာသားများ ဖတ်မရပါ။ Scan ဖတ်ထားသော ပုံရိပ်များ ဖြစ်နိုင်ပါသည်။")
             return
 
-        # Gemini Model ခေါ်ယူခြင်း
-        model = genai.GenerativeModel('gemini-1.5-flash')
-
+        # Gemini REST API သို့ တိုက်ရိုက် Request ပို့ခြင်း
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        
         prompt = f"""
         အောက်ပါ သင်ခန်းစာ စာသားများကို အခြေခံ၍ Multiple Choice Quiz မေးခွန်း (၅) ခု ထုတ်ပေးပါ။
         မေးခွန်းတစ်ခုစီအတွက် ရွေးချယ်စရာ (A, B, C, D) နှင့် မှန်ကန်သော အဖြေကို ရှင်းလင်းချက်နှင့်တကွ မြန်မာလို ဖော်ပြပေးပါ။
@@ -71,8 +67,21 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         {text_content[:4000]}
         """
 
-        response = model.generate_content(prompt)
-        await status_msg.edit_text(f"✅ **PDF မှ ထုတ်ယူရရှိသော မေးခွန်းများ:**\n\n{response.text}")
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }]
+        }
+
+        response = requests.post(url, json=payload)
+        res_json = response.json()
+
+        if response.status_code == 200:
+            generated_text = res_json['candidates'][0]['content']['parts'][0]['text']
+            await status_msg.edit_text(f"✅ **PDF မှ ထုတ်ယူရရှိသော မေးခွန်းများ:**\n\n{generated_text}")
+        else:
+            error_msg = res_json.get('error', {}).get('message', 'Unknown Error')
+            await status_msg.edit_text(f"❌ Gemini API Error: {error_msg}")
 
     except Exception as e:
         await status_msg.edit_text(f"❌ Error ဖြစ်ပွားပါသည်: {str(e)}")
