@@ -14,8 +14,9 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))
 
-# Gemini API ကို API Key တိုက်ရိုက် သုံးရန် အမှန်ပြင်ဆင်ခြင်း
-genai.configure(api_key=GEMINI_API_KEY)
+# Gemini API Configure
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
@@ -31,6 +32,10 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Admin စစ်ဆေးခြင်း
     if user_id != ADMIN_ID:
         await update.message.reply_text("⛔ ဒီ Feature ကို Admin သာ အသုံးပြုခွင့်ရှိပါတယ်။")
+        return
+
+    if not GEMINI_API_KEY:
+        await update.message.reply_text("❌ GEMINI_API_KEY မရှိသေးပါ။ GitHub Secrets ထဲတွင် ထည့်သွင်းပေးပါ။")
         return
 
     document = update.message.document
@@ -55,10 +60,9 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text("❌ PDF ထဲတွင် စာသားများ ဖတ်မရပါ။ Scan ဖတ်ထားသော ပုံရိပ်များ ဖြစ်နိုင်ပါသည်။")
             return
 
-        # Gemini Model ကို API Key ဖြင့် ခေါ်ယူခြင်း
+        # Gemini Model ခေါ်ယူခြင်း
         model = genai.GenerativeModel('gemini-1.5-flash')
 
-        # Gemini Prompt
         prompt = f"""
         အောက်ပါ သင်ခန်းစာ စာသားများကို အခြေခံ၍ Multiple Choice Quiz မေးခွန်း (၅) ခု ထုတ်ပေးပါ။
         မေးခွန်းတစ်ခုစီအတွက် ရွေးချယ်စရာ (A, B, C, D) နှင့် မှန်ကန်သော အဖြေကို ရှင်းလင်းချက်နှင့်တကွ မြန်မာလို ဖော်ပြပေးပါ။
@@ -68,7 +72,6 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
 
         response = model.generate_content(prompt)
-        
         await status_msg.edit_text(f"✅ **PDF မှ ထုတ်ယူရရှိသော မေးခွန်းများ:**\n\n{response.text}")
 
     except Exception as e:
