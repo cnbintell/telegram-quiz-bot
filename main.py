@@ -14,9 +14,8 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))
 
-# Gemini API Setup
+# Gemini API ကို API Key တိုက်ရိုက် သုံးရန် အမှန်ပြင်ဆင်ခြင်း
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
@@ -55,6 +54,9 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not text_content.strip():
             await status_msg.edit_text("❌ PDF ထဲတွင် စာသားများ ဖတ်မရပါ။ Scan ဖတ်ထားသော ပုံရိပ်များ ဖြစ်နိုင်ပါသည်။")
             return
+
+        # Gemini Model ကို API Key ဖြင့် ခေါ်ယူခြင်း
+        model = genai.GenerativeModel('gemini-1.5-flash')
 
         # Gemini Prompt
         prompt = f"""
