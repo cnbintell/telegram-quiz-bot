@@ -1,3 +1,6 @@
 python-telegram-bot
-requests
+google-generativeai
 pypdf
+python-docx
+openpyxl
+python-pptx
