@@ -74,21 +74,21 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         }
 
-        # စမ်းသပ်မည့် Model List (၄၀၄ တက်ပါက အလိုအလျောက် နောက်တစ်ခုသို့ ပြောင်းမည်)
-        models_to_try = [
-            "gemini-1.5-flash-latest",
-            "gemini-2.0-flash",
-            "gemini-1.5-pro",
-            "gemini-1.0-pro"
+        # စမ်းသပ်မည့် Validated Endpoint URL များ (v1beta မဟုတ်ဘဲ v1 သို့မဟုတ် Flash Official Alias များကို သုံးထားသည်)
+        urls_to_try = [
+            f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_API_KEY}",
+            f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
         ]
 
         success = False
         generated_text = ""
         last_error = ""
 
-        for model_name in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
-            response = requests.post(url, json=payload, timeout=60)
+        headers = {"Content-Type": "application/json"}
+
+        for url in urls_to_try:
+            response = requests.post(url, headers=headers, json=payload, timeout=60)
             res_json = response.json()
 
             if response.status_code == 200:
