@@ -50,15 +50,22 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pdf_reader = PdfReader(io.BytesIO(file_bytes))
         text_content = ""
         for page in pdf_reader.pages:
-            text_content += page.extract_text() or ""
+            extracted_text = page.extract_text()
+            if extracted_text:
+                text_content += extracted_text + "\n"
 
         if not text_content.strip():
-            await status_msg.edit_text("❌ PDF ထဲတွင် စာသားများ ဖတ်မရပါ။ Scan ဖတ်ထားသော ပုံရိပ်များ ဖြစ်နိုင်ပါသည်။")
+            await status_msg.edit_text("❌ PDF ထဲတွင် စာသားများ ဖတ်မရပါ။ Scan ဖတ်ထားသော ပုံရိပ်များ သို့မဟုတ် Image-based PDF ဖြစ်နိုင်ပါသည်။")
             return
 
-        # Gemini REST API URL (v1beta/models/gemini-2.5-flash:generateContent သို့မဟုတ် gemini-1.5-flash)
+        # Gemini REST API URL
+        # v1beta endpoint တွင် 'models/gemini-1.5-flash' ဟု တိုက်ရိုက် သတ်မှတ်ပါသည်
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         
+        headers = {
+            "Content-Type": "application/json"
+        }
+
         prompt = f"""
         အောက်ပါ သင်ခန်းစာ စာသားများကို အခြေခံ၍ Multiple Choice Quiz မေးခွန်း (၅) ခု ထုတ်ပေးပါ။
         မေးခွန်းတစ်ခုစီအတွက် ရွေးချယ်စရာ (A, B, C, D) နှင့် မှန်ကန်သော အဖြေကို ရှင်းလင်းချက်နှင့်တကွ မြန်မာလို ဖော်ပြပေးပါ။
@@ -68,20 +75,28 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
 
         payload = {
-            "contents": [{
-                "parts": [{"text": prompt}]
-            }]
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt}
+                    ]
+                }
+            ]
         }
 
-        response = requests.post(url, json=payload)
+        # Request ပို့ခြင်း
+        response = requests.post(url, headers=headers, json=payload, timeout=60)
         res_json = response.json()
 
         if response.status_code == 200:
-            generated_text = res_json['candidates'][0]['content']['parts'][0]['text']
-            await status_msg.edit_text(f"✅ **PDF မှ ထုတ်ယူရရှိသော မေးခွန်းများ:**\n\n{generated_text}")
+            try:
+                generated_text = res_json['candidates'][0]['content']['parts'][0]['text']
+                await status_msg.edit_text(f"✅ **PDF မှ ထုတ်ယူရရှိသော မေးခွန်းများ:**\n\n{generated_text}")
+            except (KeyError, IndexErrors):
+                await status_msg.edit_text("❌ AI ထံမှ စာသားပြန်လည်ထုတ်ယူရာတွင် အမှားအယွင်းရှိနေပါသည်။")
         else:
             error_msg = res_json.get('error', {}).get('message', 'Unknown Error')
-            await status_msg.edit_text(f"❌ Gemini API Error: {error_msg}")
+            await status_msg.edit_text(f"❌ Gemini API Error ({response.status_code}): {error_msg}")
 
     except Exception as e:
         await status_msg.edit_text(f"❌ Error ဖြစ်ပွားပါသည်: {str(e)}")
