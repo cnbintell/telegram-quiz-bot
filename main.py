@@ -48,22 +48,6 @@ def extract_text_from_excel(file_bytes):
                 text.append(" | ".join(row_text))
     return "\n".join(text)
 
-def get_available_model_name(api_key):
-    """API Key အောက်မှာ အမှန်တကယ် သုံးလို့ရတဲ့ Gemini Model နာမည်ကို အလိုအလျောက် ရှာဖွေပေးခြင်း"""
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        res = requests.get(url, timeout=10)
-        if res.status_code == 200:
-            models_data = res.json().get('models', [])
-            for m in models_data:
-                name = m.get('name', '')
-                supported_methods = m.get('supportedGenerationMethods', [])
-                if "generateContent" in supported_methods and "gemini" in name:
-                    return name # e.g. "models/gemini-1.5-flash"
-    except Exception:
-        pass
-    return "models/gemini-1.5-flash"
-
 async def handle_media_and_docs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -78,9 +62,9 @@ async def handle_media_and_docs(update: Update, context: ContextTypes.DEFAULT_TY
     status_msg = await update.message.reply_text("⏳ ဖိုင်ကို ဖတ်ရှုပြီး Gemini AI ဖြင့် မေးခွန်းများ ထုတ်ယူနေပါတယ်...")
 
     try:
-        # အသုံးပြုနိုင်သော Model ကို အလိုအလျောက် ရွေးချယ်ခြင်း
-        model_path = get_available_model_name(GEMINI_API_KEY)
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/{model_path}:generateContent?key={GEMINI_API_KEY}"
+        # API Message အတိုင်း gemini-3.6-flash ကို အဓိက သုံးထားပါသည်
+        model_name = "gemini-3.6-flash"
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
 
         prompt = """
         ပေးပို့ထားသော စာသား/အချက်အလက်များကို အခြေခံ၍ Multiple Choice Quiz မေးခွန်း (၅) ခု ထုတ်ပေးပါ။
@@ -89,11 +73,7 @@ async def handle_media_and_docs(update: Update, context: ContextTypes.DEFAULT_TY
 
         extracted_text = ""
 
-        if update.message.photo:
-            await status_msg.edit_text("⚠️ ဓာတ်ပုံများအတွက် စာသားပြောင်းလဲခြင်းကို လုပ်ဆောင်နေပါသည်...")
-            return
-
-        elif update.message.document:
+        if update.message.document:
             media = update.message.document
             file_name = getattr(media, 'file_name', 'file').lower()
             file = await context.bot.get_file(media.file_id)
