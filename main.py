@@ -56,7 +56,7 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text("❌ PDF ထဲတွင် စာသားများ ဖတ်မရပါ။ Scan ဖတ်ထားသော ပုံရိပ်များ ဖြစ်နိုင်ပါသည်။")
             return
 
-        # Gemini REST API URL တွင် models/gemini-1.5-flash ဟု အမှန်ပြင်ဆင်ထားပါသည်
+        # Gemini REST API URL (v1beta/models/gemini-2.5-flash:generateContent သို့မဟုတ် gemini-1.5-flash)
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         
         prompt = f"""
