@@ -1,4 +1,3 @@
 python-telegram-bot
-google-generativeai
+requests
 pypdf
-
