@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import time
 import logging
 import requests
 from pypdf import PdfReader
@@ -8,7 +9,10 @@ from docx import Document
 from pptx import Presentation
 import openpyxl
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler, CallbackQueryHandler,
+    ConversationHandler, filters, ContextTypes
+)
 
 # Logging Setup
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -21,6 +25,9 @@ ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))
 # File Text Memory Storage
 file_text_cache = {}
 
+# Conversation States for Custom Quiz Creation
+QUESTION, OPTIONS, CORRECT_OPTION, EXPLANATION = range(4)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
@@ -29,8 +36,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"👋 **မင်္ဂလာပါ Admin {user_name}!**\n\n"
             f"⚙️ **Admin Control Panel:**\n"
-            f"သင်ခန်းစာ ဖိုင်များ (PDF, Word, PPT, Excel) ကို ပို့ပေးပါ။\n"
-            f"လှပဆွဲဆောင်မှုရှိသော Interactive Quiz မေးခွန်းများကို အလိုအလျောက် ထုတ်ပေးပါမည်။ 🎯"
+            f"၁။ ဖိုင်များ (PDF, Word, PPT, Excel) ပို့ပေးပြီး AI ဖြင့် မေးခွန်းထုတ်နိုင်ပါသည်။\n"
+            f"၂။ ကိုယ်တိုင် မေးခွန်းရေးသားရန် /createquiz ကို နှိပ်ပါ။ ✍️"
         )
     else:
         await update.message.reply_text(
@@ -39,7 +46,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"ဒီ Bot မှာ တက်လာတဲ့ Quiz မေးခွန်းလေးတွေကို ဖြေဆိုပြီး မိမိ၏ အသိပညာကို စိန်ခေါ်စမ်းသပ်နိုင်ပါတယ်! ✨"
         )
 
-# Document Extraction
+# Document Extraction Functions
 def extract_text_from_docx(file_bytes):
     doc = Document(io.BytesIO(file_bytes))
     return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
@@ -103,7 +110,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         file_text_cache[user_id] = extracted_text[:5000]
 
-        # Attractive Menu Options
         keyboard = [
             [
                 InlineKeyboardButton("🟢 မေးခွန်း ၃ ခု (Quick Quiz)", callback_data="gen_3_easy"),
@@ -124,6 +130,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await status_msg.edit_text(f"❌ Error ဖြစ်ပွားပါသည်: {str(e)}")
 
+# AI Callback Handler
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -171,11 +178,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "contents": [{"parts": [{"text": f"{prompt}\n\nစာသားများ:\n{extracted_text}"}]}]
         }
 
-        try:
-            res = requests.post(api_url, headers={"Content-Type": "application/json"}, json=payload, timeout=60)
-            res_json = res.json()
+        max_retries = 3
+        res_json = None
+        
+        for attempt in range(max_retries):
+            try:
+                res = requests.post(api_url, headers={"Content-Type": "application/json"}, json=payload, timeout=60)
+                res_json = res.json()
+                if res.status_code == 200 or 'error' not in res_json:
+                    break
+                time.sleep(3)
+            except Exception:
+                time.sleep(3)
 
-            if res.status_code == 200:
+        try:
+            if res_json and 'candidates' in res_json:
                 raw_text = res_json['candidates'][0]['content']['parts'][0]['text']
                 clean_json = raw_text.replace("```json", "").replace("```", "").strip()
                 quiz_data = json.loads(clean_json)
@@ -196,8 +213,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.reply_text(result_text, reply_markup=publish_keyboard)
 
             else:
-                err_msg = res_json.get('error', {}).get('message', 'Unknown Error')
-                await query.message.reply_text(f"❌ Gemini API Error: {err_msg}")
+                err_msg = res_json.get('error', {}).get('message', 'Google Gemini Server ခေတ္တခဏ အလုပ်များနေပါသည်။ ခဏစောင့်ပြီး ပြန်လည် စမ်းသပ်ပေးပါ။')
+                await query.message.reply_text(f"⚠️ Gemini API Error: {err_msg}")
 
         except Exception as e:
             await query.message.reply_text(f"❌ Error ဖြစ်ပွားပါသည်: {str(e)}")
@@ -210,7 +227,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         chat_id = query.message.chat_id
         for q in quiz_data:
-            # Native Interactive Telegram Quiz Poll Sending
             await context.bot.send_poll(
                 chat_id=chat_id,
                 question=f"❓ {q['question']}"[:300],
@@ -222,10 +238,102 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         await query.message.reply_text("🎉 **Interactive Quiz Poll များကို အောင်မြင်စွာ တင်ပြီးပါပြီ!**")
 
+# Custom Quiz Creation Flow
+async def create_quiz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("⛔ ဒီ Feature ကို Admin သာ အသုံးပြုနိုင်ပါသည်။")
+        return ConversationHandler.END
+
+    await update.message.reply_text("✍️ **ကိုယ်ပိုင် မေးခွန်း ဖန်တီးခြင်း**\n\nကျေးဇူးပြု၍ **မေးခွန်း စာသား** ကို ရေးပို့ပေးပါ (ပယ်ဖျက်ရန် /cancel ကို နှိပ်ပါ) -")
+    return QUESTION
+
+async def set_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['custom_q'] = update.message.text
+    await update.message.reply_text(
+        "📝 **ရွေးချယ်စရာ (၄) ခု ရေးပေးပါ**\n\n"
+        "စာကြောင်း တစ်ကြောင်းစီ ခွဲ၍ (၄) ကြောင်း ရေးပေးပါ။ ဥပမာ -\n"
+        "ရွေးချယ်စရာ A\n"
+        "ရွေးချယ်စရာ B\n"
+        "ရွေးချယ်စရာ C\n"
+        "ရွေးချယ်စရာ D"
+    )
+    return OPTIONS
+
+async def set_options(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    options = [line.strip() for line in update.message.text.split("\n") if line.strip()]
+    if len(options) < 2 or len(options) > 10:
+        await update.message.reply_text("⚠️ ရွေးချယ်စရာ (၂) ခုမှ (၁၀) ခုအထိသာ ထည့်သွင်းပေးပါ။ ပြန်လည် ပို့ပေးပါ -")
+        return OPTIONS
+
+    context.user_data['custom_opts'] = options
+
+    keyboard = []
+    row = []
+    for idx, opt in enumerate(options):
+        row.append(InlineKeyboardButton(f"အဖြေ {idx+1}: {opt[:10]}", callback_data=f"correct_{idx}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+
+    await update.message.reply_text("✅ **မည်သည့် ရွေးချယ်စရာက အဖြေမှန် ဖြစ်သနည်း?**", reply_markup=InlineKeyboardMarkup(keyboard))
+    return CORRECT_OPTION
+
+async def set_correct_option(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    correct_idx = int(query.data.split("_")[1])
+    context.user_data['custom_correct'] = correct_idx
+
+    await query.edit_message_text("💡 **အဖြေမှန်၏ ရှင်းလင်းချက် (Explanation)** ကို ရေးပေးပါ (မထည့်ချင်ပါက `-` သို့မဟုတ် `Skip` ဟု ရေးပါ) -")
+    return EXPLANATION
+
+async def set_explanation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    exp = update.message.text
+    if exp.lower() in ['-', 'skip']:
+        exp = ""
+
+    question = context.user_data.get('custom_q')
+    options = context.user_data.get('custom_opts')
+    correct_idx = context.user_data.get('custom_correct')
+
+    # Send Quiz Poll Directly
+    await context.bot.send_poll(
+        chat_id=update.effective_chat.id,
+        question=f"❓ {question}"[:300],
+        options=[opt[:100] for opt in options],
+        type="quiz",
+        correct_option_id=correct_idx,
+        explanation=exp[:200],
+        is_anonymous=False
+    )
+
+    await update.message.reply_text("🎉 **သင်ကိုယ်တိုင် ဖန်တီးထားသော Quiz Poll ကို အောင်မြင်စွာ တင်လိုက်ပါပြီ!**\nနောက်ထပ် ထပ်မံ ဖန်တီးလိုပါက /createquiz ကို နှိပ်ပါ၊")
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("❌ မေးခွန်း ဖန်တီးခြင်းကို ပယ်ဖျက်လိုက်ပါပြီ။")
+    return ConversationHandler.END
+
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('createquiz', create_quiz_start)],
+        states={
+            QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_question)],
+            OPTIONS: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_options)],
+            CORRECT_OPTION: [CallbackQueryHandler(set_correct_option, pattern="^correct_")],
+            EXPLANATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_explanation)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)]
+    )
+
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(conv_handler)
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
