@@ -33,9 +33,9 @@ def load_db():
             return json.load(f)
     return {
         "premium_users": [ADMIN_ID],
-        "user_daily_limits": {}, # {"user_id": {"date": "YYYY-MM-DD", "count": 0}}
+        "user_daily_limits": {},
         "categories": ["General"],
-        "questions": [] # [{"id": 1, "category": "IT", "question": "...", "options": [], "correct_index": 0, "explanation": "..."}]
+        "questions": []
     }
 
 def save_db(db):
@@ -47,7 +47,7 @@ db = load_db()
 # Conversation States
 WAIT_CATEGORY_NAME, WAIT_PREMIUM_ID, WAIT_FILE_RECV, WAIT_AI_PROMPT = range(4)
 
-# Document Extraction
+# File Processing
 def extract_text_from_file(file_bytes, file_name):
     extracted_text = ""
     file_name = file_name.lower()
@@ -69,7 +69,7 @@ def extract_text_from_file(file_bytes, file_name):
         extracted_text = "\n".join([page.extract_text() for page in pdf_reader.pages if page.extract_text()])
     return extracted_text
 
-# Gemini AI Caller
+# Gemini AI API Call
 def call_gemini_ai(prompt_text):
     model_name = "gemini-3.6-flash"
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
@@ -80,19 +80,17 @@ def call_gemini_ai(prompt_text):
             res = requests.post(api_url, headers={"Content-Type": "application/json"}, json=payload, timeout=60)
             res_json = res.json()
             if res.status_code == 200 and 'candidates' in res_json:
-                raw = res_json['candidates'][0]['content']['parts'][0]['text']
-                clean = raw.replace("```json", "").replace("```", "").strip()
-                return json.loads(clean)
+                return res_json['candidates'][0]['content']['parts'][0]['text']
             time.sleep(2)
         except Exception:
             time.sleep(2)
     return None
 
-# --- UI Menus ---
+# --- UI Keyboards ---
 def get_main_menu_keyboard(user_id):
     keyboard = [
         [InlineKeyboardButton("🎯 Quiz ဖြေဆိုမည်", callback_data="user_start_quiz")],
-        [InlineKeyboardButton("⭐ Premium ရယူရန် / အဆင့်စစ်ရန်", callback_data="user_check_status")]
+        [InlineKeyboardButton("⭐ Premium စစ်ဆေးရန်", callback_data="user_check_status")]
     ]
     if user_id == ADMIN_ID:
         keyboard.append([InlineKeyboardButton("👑 Admin Panel သို့ဝင်ရန်", callback_data="admin_panel")])
@@ -105,14 +103,14 @@ def get_admin_panel_keyboard():
             InlineKeyboardButton("💎 Premium အတည်ပြုမည်", callback_data="admin_add_premium")
         ],
         [
-            InlineKeyboardButton("📄 File မှ AI မေးခွန်းထုတ်မည်", callback_data="admin_ai_file"),
-            InlineKeyboardButton("🤖 Gemini Chat Bot Mode", callback_data="admin_ai_chat")
+            InlineKeyboardButton("📄 File မှ Quiz ထုတ်မည်", callback_data="admin_ai_file"),
+            InlineKeyboardButton("🤖 Gemini Chat/Prompt Mode", callback_data="admin_ai_chat")
         ],
-        [InlineKeyboardButton("📊 စာရင်းဇယားနှင့် မေးခွန်းများကြည့်မည်", callback_data="admin_stats")],
+        [InlineKeyboardButton("📊 စာရင်းဇယားများ ကြည့်မည်", callback_data="admin_stats")],
         [InlineKeyboardButton("🔙 Main Menu သို့ပြန်သွားမည်", callback_data="go_main_menu")]
     ])
 
-# --- Commands & Handlers ---
+# --- Basic Commands ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
@@ -120,7 +118,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_tag = "💎 Premium Member" if is_prem else "🆓 Free Member"
 
     msg = f"👋 **မင်္ဂလာပါ {user_name}!** ({status_tag})\n\n" \
-          f"✨ **Quiz Platform မှ ကြိုဆိုပါတယ်!**\n" \
+          f"✨ **Quiz & Gemini AI Bot မှ ကြိုဆိုပါတယ်!**\n" \
           f"• Free User: တစ်နေ့လျှင် မေးခွန်း (၁၀) ပုဒ် ဖြေဆိုနိုင်ပါသည်။\n" \
           f"• Premium User: မေးခွန်းများကို အကန့်အသတ်မရှိ စိတ်ကြိုက်ဖြေဆိုနိုင်ပါသည်။"
     
@@ -137,7 +135,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("📌 **Main Menu**", reply_markup=get_main_menu_keyboard(user_id))
 
     elif data == "admin_panel" and user_id == ADMIN_ID:
-        await query.edit_message_text("👑 **Admin Management Dashboard**\n\nအောက်ပါ Button များမှ စိတ်ကြိုက် စီမံခန့်ခွဲနိုင်ပါသည်:", reply_markup=get_admin_panel_keyboard())
+        await query.edit_message_text("👑 **Admin Dashboard**\n\nအောက်ပါ ခလုတ်များမှ စီမံခန့်ခွဲနိုင်ပါသည်။", reply_markup=get_admin_panel_keyboard())
 
     elif data == "user_check_status":
         is_prem = user_id in db["premium_users"]
@@ -149,8 +147,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                       f"🆔 ID: `{user_id}`\n" \
                       f"အမျိုးအစား: {'💎 **Premium (Unlimited)**' if is_prem else '🆓 **Free User**'}\n"
         if not is_prem:
-            status_text += f"ယနေ့ဖြေဆိုပြီး: **{used} / 10** ပုဒ်\n\n" \
-                           f"✨ Unlimited ဖြေဆိုလိုပါက Admin ထံ ဆက်သွယ်၍ Premium အဆင့်မြှင့်နိုင်ပါသည်။"
+            status_text += f"ယနေ့ဖြေဆိုပြီး: **{used} / 10** ပုဒ်\n"
         
         await query.edit_message_text(status_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 ပြန်သွားမည်", callback_data="go_main_menu")]]), parse_mode="Markdown")
 
@@ -160,31 +157,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tot_prem = len(db["premium_users"])
         stats_msg = f"📊 **System Statistics**\n\n" \
                     f"• စုစုပေါင်း မေးခွန်း: **{tot_q}** ပုဒ်\n" \
-                    f"• Category ပမာဏ: **{tot_cat}** ခု ({', '.join(db['categories'])})\n" \
+                    f"• Category ပမာဏ: **{tot_cat}** ခု\n" \
                     f"• Premium User: **{tot_prem}** ယောက်"
         await query.edit_message_text(stats_msg, reply_markup=get_admin_panel_keyboard(), parse_mode="Markdown")
 
-    # User Start Quiz Logic
     elif data == "user_start_quiz":
         is_prem = user_id in db["premium_users"]
         today = str(date.today())
         user_lim = db["user_daily_limits"].get(str(user_id), {"date": today, "count": 0})
         
-        if user_lim["date"] != today:
-            user_lim = {"date": today, "count": 0}
+        if user_lim["date"] != today: user_lim = {"date": today, "count": 0}
 
         if not is_prem and user_lim["count"] >= 10:
-            await query.edit_message_text(
-                "❌ **ယနေ့အတွက် Limit (၁၀) ပုဒ် ပြည့်သွားပါပြီ!**\n\nမနက်ဖြန်မှ ထပ်မံဖြေဆိုပါ သို့မဟုတ် Premium အဆင့်မြှင့်တင်ပါ။",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 ပြန်သွားမည်", callback_data="go_main_menu")]])
-            )
+            await query.edit_message_text("❌ **ယနေ့အတွက် Limit (၁၀) ပုဒ် ပြည့်သွားပါပြီ!**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 ပြန်သွားမည်", callback_data="go_main_menu")]]))
             return
 
-        # Choose Category
-        cat_buttons = []
-        for cat in db["categories"]:
-            cat_buttons.append([InlineKeyboardButton(f"📁 {cat}", callback_data=f"play_cat_{cat}")])
-        
+        cat_buttons = [[InlineKeyboardButton(f"📁 {cat}", callback_data=f"play_cat_{cat}")] for cat in db["categories"]]
         await query.edit_message_text("📂 **ဖြေဆိုလိုသည့် Category ကို ရွေးချယ်ပါ -**", reply_markup=InlineKeyboardMarkup(cat_buttons))
 
     elif data.startswith("play_cat_"):
@@ -192,18 +180,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         q_pool = [q for q in db["questions"] if q["category"] == cat_name]
         
         if not q_pool:
-            await query.edit_message_text(f"⚠️ **{cat_name}** Category ထဲတွင် မေးခွန်းများ မရှိသေးပါ။", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 ပြန်သွားမည်", callback_data="go_main_menu")]]))
+            await query.edit_message_text(f"⚠️ **{cat_name}** ထဲတွင် မေးခွန်း မရှိသေးပါ။", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 ပြန်သွားမည်", callback_data="go_main_menu")]]))
             return
 
-        # Prepare Quiz Session (10 Questions Random)
         selected_qs = random.sample(q_pool, min(10, len(q_pool)))
-        context.user_data["quiz_session"] = {
-            "category": cat_name,
-            "questions": selected_qs,
-            "current_index": 0,
-            "score": 0,
-            "start_time": time.time()
-        }
+        context.user_data["quiz_session"] = {"category": cat_name, "questions": selected_qs, "current_index": 0, "score": 0, "start_time": time.time()}
         await send_quiz_question(query, context)
 
 # --- Quiz Engine ---
@@ -213,14 +194,11 @@ async def send_quiz_question(query, context):
     qs = session["questions"]
 
     if idx >= len(qs):
-        # Quiz Complete -> Show Result Card
-        elapsed = int(time.time() - session["start_time"])
         score = session["score"]
         total = len(qs)
         percentage = (score / total) * 100
-
-        # Update Daily Limit for Free User
         user_id = query.from_user.id
+        
         if user_id not in db["premium_users"]:
             today = str(date.today())
             ulim = db["user_daily_limits"].get(str(user_id), {"date": today, "count": 0})
@@ -229,35 +207,18 @@ async def send_quiz_question(query, context):
             db["user_daily_limits"][str(user_id)] = ulim
             save_db(db)
 
-        # Grade Template
-        badge = "🏆 Excellence!" if percentage >= 80 else "👍 Good Job!" if percentage >= 50 else "န အားထုတ်ပါဦး!"
-        res_text = f"🎯 **QUIZ RESULT CARD** 🎯\n" \
-                   f"━━━━━━━━━━━━━━━━━━\n" \
-                   f"📁 **Category:** {session['category']}\n" \
-                   f"✨ **ရမှတ်:** {score} / {total}\n" \
-                   f"📊 **ရာခိုင်နှုန်း:** {percentage:.1f}%\n" \
-                   f"⏱️ **ကြာချိန်:** {elapsed} စက္ကန့်\n" \
-                   f"ဆုတံဆိပ်: **{badge}**\n" \
-                   f"━━━━━━━━━━━━━━━━━━"
-
-        await query.edit_message_text(res_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Main Menu သို့ပြန်သွားမည်", callback_data="go_main_menu")]]), parse_mode="Markdown")
+        badge = "🏆 Excellence!" if percentage >= 80 else "👍 Good Job!" if percentage >= 50 else "💪 Try Again!"
+        res_text = f"🎯 **QUIZ RESULT CARD** 🎯\n━━━━━━━━━━━━━━━━━━\n📁 **Category:** {session['category']}\n✨ **ရမှတ်:** {score} / {total} ({percentage:.1f}%)\nဆုတံဆိပ်: **{badge}**\n━━━━━━━━━━━━━━━━━━"
+        await query.edit_message_text(res_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Main Menu", callback_data="go_main_menu")]]), parse_mode="Markdown")
         return
 
     q = qs[idx]
-    opts_btn = []
-    for o_idx, opt in enumerate(q["options"]):
-        opts_btn.append([InlineKeyboardButton(opt, callback_data=f"ans_{o_idx}")])
-
-    await query.edit_message_text(
-        f"❓ **မေးခွန်း ({idx + 1}/{len(qs)}):**\n\n{q['question']}",
-        reply_markup=InlineKeyboardMarkup(opts_btn),
-        parse_mode="Markdown"
-    )
+    opts_btn = [[InlineKeyboardButton(opt, callback_data=f"ans_{o_idx}")] for o_idx, opt in enumerate(q["options"])]
+    await query.edit_message_text(f"❓ **မေးခွန်း ({idx + 1}/{len(qs)}):**\n\n{q['question']}", reply_markup=InlineKeyboardMarkup(opts_btn), parse_mode="Markdown")
 
 async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
     session = context.user_data.get("quiz_session")
     if not session: return
 
@@ -269,17 +230,15 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
         session["score"] += 1
         await query.message.reply_text(f"✅ **မှန်ပါတယ်!**\n💡 {q.get('explanation', '')}")
     else:
-        correct_opt = q["options"][q["correct_index"]]
-        await query.message.reply_text(f"❌ **မှားယွင်းပါသည်။**\n✓ အဖြေမှန်: {correct_opt}\n💡 {q.get('explanation', '')}")
+        await query.message.reply_text(f"❌ **မှားယွင်းပါသည်။**\n✓ အဖြေမှန်: {q['options'][q['correct_index']]}\n💡 {q.get('explanation', '')}")
 
     session["current_index"] += 1
     await send_quiz_question(query, context)
 
-# --- Admin Actions Flow ---
+# --- Admin Handlers (File & Chat Mode) ---
 async def admin_add_cat_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("✍️ **ဖန်တီးလိုသော Category နာမည်ကို ရေးပို့ပေးပါ -**")
+    await update.callback_query.answer()
+    await update.callback_query.edit_message_text("✍️ **ဖန်တီးလိုသော Category နာမည် ရေးပို့ပါ -**")
     return WAIT_CATEGORY_NAME
 
 async def admin_save_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -287,15 +246,12 @@ async def admin_save_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cat_name not in db["categories"]:
         db["categories"].append(cat_name)
         save_db(db)
-        await update.message.reply_text(f"✅ Category **'{cat_name}'** ကို အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။", reply_markup=get_admin_panel_keyboard())
-    else:
-        await update.message.reply_text("⚠️ ဒီ Category နာမည် ရှိပြီးသား ဖြစ်ပါသည်။", reply_markup=get_admin_panel_keyboard())
+        await update.message.reply_text(f"✅ Category **'{cat_name}'** ဖန်တီးပြီးပါပြီ။", reply_markup=get_admin_panel_keyboard())
     return ConversationHandler.END
 
 async def admin_add_prem_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("💎 **Premium ပေးလိုသော User ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ -**")
+    await update.callback_query.answer()
+    await update.callback_query.edit_message_text("💎 **Premium ပေးလိုသော User ID ရိုက်ပို့ပါ -**")
     return WAIT_PREMIUM_ID
 
 async def admin_save_prem(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -304,27 +260,35 @@ async def admin_save_prem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if uid not in db["premium_users"]:
             db["premium_users"].append(uid)
             save_db(db)
-            await update.message.reply_text(f"🎉 User ID `{uid}` အား **Premium User** အဖြစ် အတည်ပြုပေးလိုက်ပါပြီ။", reply_markup=get_admin_panel_keyboard())
-        else:
-            await update.message.reply_text("⚠️ ဒီ User သည် Premium ဖြစ်ပြီးသား ဖြစ်ပါသည်။", reply_markup=get_admin_panel_keyboard())
-    except ValueError:
-        await update.message.reply_text("❌ ID သည် ကိန်းဂဏန်း သို့မဟုတ် တိကျသော စာသား ဖြစ်ရပါမည်။", reply_markup=get_admin_panel_keyboard())
+            await update.message.reply_text(f"🎉 User ID `{uid}` အား Premium အဖြစ် အတည်ပြုလိုက်ပါပြီ။", reply_markup=get_admin_panel_keyboard())
+    except Exception:
+        await update.message.reply_text("❌ ID မမှန်ကန်ပါ။", reply_markup=get_admin_panel_keyboard())
     return ConversationHandler.END
 
-# Admin File / AI Chat Prompt Flow
-async def admin_ai_chat_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("🤖 **Gemini AI Chat Mode**\n\nမည်သည့် မေးခွန်းမျိုး ထုတ်ယူချင်လဲဆိုတာ စာဖြင့် ခိုင်းလိုက်ပါ (ဥပမာ- 'Grade 10 English သဒ္ဒါ မေးခွန်း ၅ ခု ထုတ်ပေးပါ') -")
-    return WAIT_AI_PROMPT
+# File Mode Flow
+async def admin_ai_file_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await update.callback_query.edit_message_text("📄 **မေးခွန်းထုတ်လိုသော ဖိုင် (PDF, Word, PPT, Excel) ပို့ပေးပါ -**")
+    return WAIT_FILE_RECV
 
-async def admin_process_ai_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_prompt = update.message.text
-    status_msg = await update.message.reply_text("⏳ **Gemini AI မှ မေးခွန်းများ ဖန်တီးပေးနေပါသည်...**")
+async def admin_process_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    media = update.message.document
+    if not media:
+        await update.message.reply_text("⚠️ ကျေးဇူးပြု၍ ဖိုင်ပို့ပေးပါ။")
+        return WAIT_FILE_RECV
+
+    status_msg = await update.message.reply_text("⏳ **ဖိုင်ကို ဖတ်ရှုပြီး Gemini AI ဖြင့် မေးခွန်းထုတ်နေပါတယ်...**")
+    file_name = media.file_name
+    file = await context.bot.get_file(media.file_id)
+    file_bytes = await file.download_as_bytearray()
+    extracted_text = extract_text_from_file(file_bytes, file_name)
+
+    if not extracted_text.strip():
+        await status_msg.edit_text("❌ ဖိုင်ထဲမှ စာသားများ ဖတ်၍ မရပါ။")
+        return ConversationHandler.END
 
     prompt = f"""
-    {user_prompt}
-    
+    အောက်ပါ စာသားများကို အခြေခံ၍ Multiple Choice Quiz မေးခွန်း (၅) ခု ထုတ်ပေးပါ။
     အဖြေများကို JSON Format အတိအကျဖြင့်သာ ပြန်ပေးပါ။
     [
       {{
@@ -334,28 +298,85 @@ async def admin_process_ai_prompt(update: Update, context: ContextTypes.DEFAULT_
         "explanation": "ရှင်းလင်းချက်"
       }}
     ]
+    
+    စာသားများ:
+    {extracted_text[:4000]}
     """
-    quiz_data = call_gemini_ai(prompt)
-    if quiz_data:
-        default_cat = db["categories"][0]
-        for q in quiz_data:
-            q["id"] = len(db["questions"]) + 1
-            q["category"] = default_cat
-            db["questions"].append(q)
-        save_db(db)
-        await status_msg.edit_text(f"✅ မေးခွန်း **({len(quiz_data)})** ခုအား Category **'{default_cat}'** ထဲသို့ အလိုအလျောက် သိမ်းဆည်းလိုက်ပါပြီ။", reply_markup=get_admin_panel_keyboard())
+    raw_res = call_gemini_ai(prompt)
+    if raw_res:
+        try:
+            clean = raw_res.replace("```json", "").replace("```", "").strip()
+            quiz_data = json.loads(clean)
+            def_cat = db["categories"][0]
+            for q in quiz_data:
+                q["id"] = len(db["questions"]) + 1
+                q["category"] = def_cat
+                db["questions"].append(q)
+            save_db(db)
+            await status_msg.edit_text(f"✅ ဖိုင်ထဲမှ မေးခွန်း **({len(quiz_data)})** ခု အောင်မြင်စွာ ထုတ်ယူ သိမ်းဆည်းလိုက်ပါပြီ။", reply_markup=get_admin_panel_keyboard())
+        except Exception:
+            await status_msg.edit_text("❌ AI ရဲ့ Response Format မမှန်ပါ၊ ပြန်လည် စမ်းသပ်ပေးပါ။", reply_markup=get_admin_panel_keyboard())
     else:
-        await status_msg.edit_text("❌ Gemini AI မှ မေးခွန်း ထုတ်ယူ၍ မရရှိခဲ့ပါ။", reply_markup=get_admin_panel_keyboard())
+        await status_msg.edit_text("❌ Gemini AI Error ဖြစ်သွားပါသည်။", reply_markup=get_admin_panel_keyboard())
+
+    return ConversationHandler.END
+
+# Chat / Flexible Prompt Flow
+async def admin_ai_chat_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await update.callback_query.edit_message_text("🤖 **Gemini Chat / Prompt Mode**\n\nGemini ကို ကြိုက်တာ ခိုင်းလို့/မေးလို့ ရပါပြီ! မေးခွန်းထုတ်ခိုင်းချင်တာပဲဖြစ်ဖြစ်၊ သိလိုတာ မေးချင်တာပဲဖြစ်ဖြစ် စာရိုက်ပို့လိုက်ပါ -")
+    return WAIT_AI_PROMPT
+
+async def admin_process_ai_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_prompt = update.message.text
+    status_msg = await update.message.reply_text("⏳ **Gemini AI အကြောင်းပြန်နေပါသည်...**")
+
+    # Check if prompt is asking for Quiz JSON or General Chat
+    if "မေးခွန်း" in user_prompt or "quiz" in user_prompt.lower():
+        prompt = f"""
+        {user_prompt}
+        အဖြေများကို JSON Format အတိအကျဖြင့်သာ ပြန်ပေးပါ။
+        [
+          {{
+            "question": "မေးခွန်းစာသား",
+            "options": ["A ရွေးချယ်စရာ", "B ရွေးချယ်စရာ", "C ရွေးချယ်စရာ", "D ရွေးချယ်စရာ"],
+            "correct_index": 0,
+            "explanation": "ရှင်းလင်းချက်"
+          }}
+        ]
+        """
+        raw_res = call_gemini_ai(prompt)
+        if raw_res:
+            try:
+                clean = raw_res.replace("```json", "").replace("```", "").strip()
+                quiz_data = json.loads(clean)
+                def_cat = db["categories"][0]
+                for q in quiz_data:
+                    q["id"] = len(db["questions"]) + 1
+                    q["category"] = def_cat
+                    db["questions"].append(q)
+                save_db(db)
+                await status_msg.edit_text(f"✅ Gemini AI မှ မေးခွန်း **({len(quiz_data)})** ခု ထုတ်ယူပြီး Database သို့ သိမ်းဆည်းလိုက်ပါပြီ။", reply_markup=get_admin_panel_keyboard())
+                return ConversationHandler.END
+            except Exception:
+                pass
+
+    # General Gemini Chat fallback
+    ai_reply = call_gemini_ai(user_prompt)
+    if ai_reply:
+        await status_msg.edit_text(f"🤖 **Gemini AI တုံ့ပြန်ချက်:**\n\n{ai_reply}", reply_markup=get_admin_panel_keyboard())
+    else:
+        await status_msg.edit_text("❌ Gemini AI ထံမှ စာပြန်မလာပါ။", reply_markup=get_admin_panel_keyboard())
+
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ လုပ်ဆောင်ချက်ကို ပယ်ဖျက်လိုက်ပါပြီ။", reply_markup=get_main_menu_keyboard(update.effective_user.id))
+    await update.message.reply_text("❌ မလုပ်ဆောင်တော့ပါ။", reply_markup=get_main_menu_keyboard(update.effective_user.id))
     return ConversationHandler.END
 
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # Conversation Handlers
     cat_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_add_cat_start, pattern="^admin_add_cat$")],
         states={WAIT_CATEGORY_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_save_cat)]},
@@ -368,6 +389,12 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel)]
     )
 
+    file_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(admin_ai_file_start, pattern="^admin_ai_file$")],
+        states={WAIT_FILE_RECV: [MessageHandler(filters.Document.ALL, admin_process_file)]},
+        fallbacks=[CommandHandler('cancel', cancel)]
+    )
+
     ai_chat_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_ai_chat_start, pattern="^admin_ai_chat$")],
         states={WAIT_AI_PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_process_ai_prompt)]},
@@ -377,6 +404,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(cat_conv)
     app.add_handler(prem_conv)
+    app.add_handler(file_conv)
     app.add_handler(ai_chat_conv)
     app.add_handler(CallbackQueryHandler(handle_quiz_answer, pattern="^ans_"))
     app.add_handler(CallbackQueryHandler(handle_callback))
