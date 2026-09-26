@@ -1,0 +1,10 @@
+aiogram>=3.0.0
+google-genai
+pydantic
+tenacity
+pypdf
+python-docx
+python-pptx
+openpyxl
+aiofiles
+sqlite3-to-mysql

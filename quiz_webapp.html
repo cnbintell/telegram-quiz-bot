@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Enterprise AI Quiz WebApp</title>
+    
+    <!-- 1. Telegram WebApp JavaScript SDK (Mini App ပွင့်ရန် မရှိမဖြစ် လိုအပ်ပါသည်) -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <!-- 2. Tailwind CSS (UI ဒီဇိုင်းအတွက်) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 3. Canvas Confetti Animation (အောင်မြင်လျှင် ပြရန်) -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        /* Telegram App Theme နဲ့ လိုက်ဖက်အောင် Style ပြင်ဆင်ထားခြင်း */
+        body {
+            background-color: var(--tg-theme-bg-color, #f3f4f6);
+            color: var(--tg-theme-text-color, #1f2937);
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .tg-card {
+            background-color: var(--tg-theme-secondary-bg-color, #ffffff);
+        }
+        .tg-button {
+            background-color: var(--tg-theme-button-color, #2563eb);
+            color: var(--tg-theme-button-text-color, #ffffff);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-4">
+
+    <!-- Header Section -->
+    <div id="app-header" class="w-full max-w-md mx-auto mb-4">
+        <div class="flex justify-between items-center tg-card p-4 rounded-xl shadow-sm border border-gray-100">
+            <div>
+                <h1 class="font-bold text-lg" id="user-name">Guest User</h1>
+                <p class="text-xs text-gray-500" id="quiz-category">Category: General</p>
+            </div>
+            <div class="text-right">
+                <span id="timer" class="text-sm font-bold bg-blue-100 text-blue-700 px-3 py-1 rounded-full">⏱️ 00:30</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Quiz Container -->
+    <div id="quiz-container" class="w-full max-w-md mx-auto tg-card p-6 rounded-2xl shadow-md border border-gray-100 flex-grow">
+        <!-- Progress Bar -->
+        <div class="w-full bg-gray-200 h-2 rounded-full mb-6 overflow-hidden">
+            <div id="progress-bar" class="bg-blue-600 h-full w-0 transition-all duration-300"></div>
+        </div>
+
+        <!-- Question Counter -->
+        <div class="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2" id="question-tracker">Question 1 of 5</div>
+
+        <!-- Question Text -->
+        <h2 class="text-lg font-bold mb-6 leading-snug" id="question-text">Loading Quiz Questions...</h2>
+
+        <!-- Options Container -->
+        <div class="space-y-3" id="options-container">
+            <!-- Dynamic Options will be injected here -->
+        </div>
+
+        <!-- Explanation Area (Hidden by default) -->
+        <div id="explanation-box" class="hidden mt-6 p-4 rounded-xl bg-blue-50 border border-blue-200 text-sm text-blue-900">
+            <p class="font-semibold mb-1">💡 Explanation:</p>
+            <p id="explanation-text"></p>
+        </div>
+    </div>
+
+    <!-- Result Screen (Hidden by default) -->
+    <div id="result-container" class="hidden w-full max-w-md mx-auto tg-card p-6 rounded-2xl shadow-md border border-gray-100 text-center flex-grow flex flex-col justify-center items-center">
+        <div class="text-6xl mb-4">🎉</div>
+        <h2 class="text-2xl font-bold mb-2">Quiz Completed!</h2>
+        <p class="text-gray-500 mb-6">Your Performance Summary</p>
+        
+        <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 w-full mb-6">
+            <div class="text-3xl font-extrabold text-blue-600 mb-1" id="final-score">0 / 0</div>
+            <div class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Total Score</div>
+        </div>
+
+        <button onclick="closeWebApp()" class="w-full py-3 px-6 rounded-xl font-semibold tg-button shadow-md transition-all active:scale-95">
+            Done & Return to Chat
+        </button>
+    </div>
+
+    <!-- Footer Action Button -->
+    <div id="footer-actions" class="w-full max-w-md mx-auto mt-4">
+        <button id="next-btn" onclick="nextQuestion()" class="hidden w-full py-3 px-6 rounded-xl font-semibold tg-button shadow-md transition-all active:scale-95">
+            Next Question ➔
+        </button>
+    </div>
+
+    <script>
+        // Telegram WebApp SDK Initialize
+        let tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand(); // Telegram အောက်ခြေမှ Mini App Screen အပြည့် ပွင့်သွားစေရန်
+
+        // Display Telegram User Info
+        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+            document.getElementById('user-name').innerText = tg.initDataUnsafe.user.first_name + " " + (tg.initDataUnsafe.user.last_name || "");
+        }
+
+        // Dummy Sample Quiz Questions (Database နှင့် ချိတ်လျှင် API ဖြင့် ယူနိုင်ပါသည်)
+        const quizData = [
+            {
+                question: "What is the primary LLM engine powering this Enterprise Quiz Platform?",
+                options: ["GPT-4o", "Gemini 2.5 Flash", "Claude 3.5 Sonnet", "Llama 3"],
+                correct: 1,
+                explanation: "Gemini 2.5 Flash is integrated with structured Pydantic outputs for high-resilience quiz generation."
+            },
+            {
+                question: "Which Python library is used in backend for Telegram Bot polling?",
+                options: ["pyTelegramBotAPI", "python-telegram-bot", "aiogram 3.x", "Telethon"],
+                correct: 2,
+                explanation: "aiogram 3.x provides high-performance asynchronous event handling for Telegram bots."
+            }
+        ];
+
+        let currentIndex = 0;
+        let score = 0;
+        let selectedOption = null;
+        let timeLeft = 30;
+        let timerInterval;
+
+        function startTimer() {
+            timeLeft = 30;
+            document.getElementById('timer').innerText = `⏱️ 00:${timeLeft < 10 ? '0' : ''}${timeLeft}`;
+            clearInterval(timerInterval);
+            
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById('timer').innerText = `⏱️ 00:${timeLeft < 10 ? '0' : ''}${timeLeft}`;
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    autoSubmit();
+                }
+            }, 1000);
+        }
+
+        function loadQuestion() {
+            startTimer();
+            selectedOption = null;
+            document.getElementById('next-btn').classList.add('hidden');
+            document.getElementById('explanation-box').classList.add('hidden');
+
+            const current = quizData[currentIndex];
+            document.getElementById('question-tracker').innerText = `Question ${currentIndex + 1} of ${quizData.length}`;
+            document.getElementById('question-text').innerText = current.question;
+            
+            // Update Progress Bar
+            const progressPercent = ((currentIndex) / quizData.length) * 100;
+            document.getElementById('progress-bar').style.width = `${progressPercent}%`;
+
+            const optionsContainer = document.getElementById('options-container');
+            optionsContainer.innerHTML = '';
+
+            current.options.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "w-full text-left p-4 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 active:bg-gray-100 transition-all font-medium text-sm flex items-center justify-between";
+                btn.onclick = () => selectOption(idx, btn);
+                btn.innerHTML = `<span>${opt}</span> <div class="w-5 h-5 rounded-full border-2 border-gray-300 flex items-center justify-center"></div>`;
+                optionsContainer.appendChild(btn);
+            });
+        }
+
+        function selectOption(index, btnElement) {
+            if (selectedOption !== null) return; // Prevent changing after selection
+            clearInterval(timerInterval);
+
+            selectedOption = index;
+            const current = quizData[currentIndex];
+            const options = document.getElementById('options-container').children;
+
+            if (index === current.correct) {
+                score++;
+                btnElement.classList.add('border-green-500', 'bg-green-50', 'text-green-800');
+                btnElement.querySelector('div').className = "w-5 h-5 rounded-full bg-green-500 text-white flex items-center justify-center text-xs";
+                btnElement.querySelector('div').innerHTML = "✓";
+                confetti({ particleCount: 50, spread: 60, origin: { y: 0.8 } });
+            } else {
+                btnElement.classList.add('border-red-500', 'bg-red-50', 'text-red-800');
+                btnElement.querySelector('div').className = "w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center text-xs";
+                btnElement.querySelector('div').innerHTML = "✕";
+
+                // Highlight Correct Answer
+                options[current.correct].classList.add('border-green-500', 'bg-green-50');
+            }
+
+            // Show Explanation
+            document.getElementById('explanation-text').innerText = current.explanation;
+            document.getElementById('explanation-box').classList.remove('hidden');
+
+            // Show Next Button
+            document.getElementById('next-btn').classList.remove('hidden');
+        }
+
+        function autoSubmit() {
+            if (selectedOption === null) {
+                const current = quizData[currentIndex];
+                const options = document.getElementById('options-container').children;
+                options[current.correct].classList.add('border-green-500', 'bg-green-50');
+                document.getElementById('explanation-text').innerText = "Time expired! " + current.explanation;
+                document.getElementById('explanation-box').classList.remove('hidden');
+                document.getElementById('next-btn').classList.remove('hidden');
+            }
+        }
+
+        function nextQuestion() {
+            currentIndex++;
+            if (currentIndex < quizData.length) {
+                loadQuestion();
+            } else {
+                showResults();
+            }
+        }
+
+        function showResults() {
+            document.getElementById('quiz-container').classList.add('hidden');
+            document.getElementById('app-header').classList.add('hidden');
+            document.getElementById('footer-actions').classList.add('hidden');
+            
+            document.getElementById('result-container').classList.remove('hidden');
+            document.getElementById('final-score').innerText = `${score} / ${quizData.length}`;
+
+            confetti({ particleCount: 150, spread: 100, origin: { y: 0.5 } });
+
+            // Send Result to Telegram Bot
+            if (tg.sendData) {
+                tg.sendData(JSON.stringify({ score: score, total: quizData.length }));
+            }
+        }
+
+        function closeWebApp() {
+            tg.close();
+        }
+
+        // Initialize First Question
+        loadQuestion();
+    </script>
+</body>
+</html>
