@@ -37,20 +37,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # ==========================================
 # CONFIGURATION & ENVIRONMENT VARIABLES
 # ==========================================
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8827420786:AAGVvZN87RXMVKQLvk-EZqNlsozJsJk4Of0")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
 
-# Admin ID သတ်မှတ်ခြင်း (Env Variable သို့မဟုတ် Default ID)
 raw_admin_id = os.getenv("ADMIN_ID", "6722699587")
 try:
     MY_TELEGRAM_ID = int(raw_admin_id)
 except ValueError:
     MY_TELEGRAM_ID = 6722699587
 
-# GitHub Pages WebApp Link
 WEBAPP_URL = "https://cnbintell.github.io/telegram-quiz-bot/quiz_webapp.html"
-
-# Free User Daily Limit
 FREE_DAILY_LIMIT = 10
 
 # Initialize Gemini Client
@@ -65,7 +61,6 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    # User Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS User (
         user_id INTEGER PRIMARY KEY,
@@ -77,7 +72,6 @@ def init_db():
     )
     """)
     
-    # Admin Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS Admin (
         admin_id INTEGER PRIMARY KEY,
@@ -86,7 +80,6 @@ def init_db():
     )
     """)
     
-    # QuizCategory Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS QuizCategory (
         category_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,7 +88,6 @@ def init_db():
     )
     """)
     
-    # PaymentConfig Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS PaymentConfig (
         config_id INTEGER PRIMARY KEY DEFAULT 1,
@@ -106,7 +98,6 @@ def init_db():
     )
     """)
     
-    # QuizResult Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS QuizResult (
         result_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -119,7 +110,6 @@ def init_db():
     )
     """)
 
-    # Question Bank Storage
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS QuestionBank (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -131,7 +121,6 @@ def init_db():
     )
     """)
     
-    # Admin ID ကို Database ထဲသို့ တိုက်ရိုက် ထည့်သွင်းခြင်း
     cursor.execute("INSERT OR IGNORE INTO Admin (admin_id, added_by, created_at) VALUES (?, ?, ?)",
                    (MY_TELEGRAM_ID, 0, datetime.now().isoformat()))
         
@@ -144,7 +133,6 @@ def init_db():
 
 init_db()
 
-# Async Database Query Helper
 async def db_query(query: str, params: tuple = (), fetchone=False, fetchall=False, commit=False):
     def _execute():
         conn = sqlite3.connect(DB_FILE)
@@ -258,7 +246,6 @@ async def start_cmd(message: Message):
     username = message.from_user.username or "User"
     today = str(date.today())
     
-    # Auto-add or Reset Daily Count for User
     existing = await db_query("SELECT user_id, last_quiz_date FROM User WHERE user_id = ?", (user_id,), fetchone=True)
     if not existing:
         await db_query(
@@ -269,7 +256,6 @@ async def start_cmd(message: Message):
         if existing[1] != today:
             await db_query("UPDATE User SET daily_count = 0, last_quiz_date = ? WHERE user_id = ?", (today, user_id), commit=True)
 
-    # Admin verification and database sync
     if user_id == MY_TELEGRAM_ID:
         await db_query("INSERT OR IGNORE INTO Admin (admin_id, added_by, created_at) VALUES (?, 0, ?)",
                        (user_id, datetime.now().isoformat()), commit=True)
