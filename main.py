@@ -7,7 +7,7 @@ import sqlite3
 from datetime import date, datetime
 from typing import List, Optional
 
-# Async & Document Libraries
+# Async & Document Processing Libraries
 import aiofiles
 from pypdf import PdfReader
 from docx import Document
@@ -25,7 +25,7 @@ from aiogram import Bot, Dispatcher, F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
     Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
-    WebAppInfo, ContentType
+    WebAppInfo
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -41,7 +41,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
 INITIAL_ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))
 
-# GitHub Pages ဖြင့် Hosting တင်ထားသော သင်၏ WebApp Link
+# အဆင်ပြေသွားသော သင်၏ GitHub Pages WebApp Link
 WEBAPP_URL = "https://cnbintell.github.io/telegram-quiz-bot/quiz_webapp.html"
 
 # Initialize Gemini Client
@@ -110,7 +110,7 @@ def init_db():
     )
     """)
 
-    # Questions Storage
+    # Question Bank Storage
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS QuestionBank (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,7 +134,7 @@ def init_db():
 
 init_db()
 
-# DB Helper Async Operations
+# Async Database Query Helper
 async def db_query(query: str, params: tuple = (), fetchone=False, fetchall=False, commit=False):
     def _execute():
         conn = sqlite3.connect(DB_FILE)
@@ -259,7 +259,7 @@ async def start_cmd(message: Message):
     is_admin = bool(admin_row)
     
     await message.answer(
-        f"👋 **မင်္ဂလာပါ {username}**\nEnterprise-Grade AI Quiz Platform မှ ကြိုဆိုပါသည်။",
+        f"👋 **မင်္ဂလာပါ {username}**\n\nEnterprise-Grade AI Quiz Platform မှ ကြိုဆိုပါသည်။\nအောက်ပါ ခလုတ်ကို နှိပ်၍ Quiz စတင် ဖြေဆိုနိုင်ပါသည်။",
         reply_markup=get_main_menu(user_id, is_admin),
         parse_mode="Markdown"
     )
@@ -282,11 +282,11 @@ async def cb_admin_panel(callback: CallbackQuery):
 @router.callback_query(F.data == "check_status")
 async def cb_check_status(callback: CallbackQuery):
     user_id = callback.from_user.id
-    user_row = await db_query("SELECT is_premium, daily_count, last_quiz_date FROM User WHERE user_id = ?", (user_id,), fetchone=True)
-    pay_row = await db_query("SELECT kpay_number, kpay_name, qr_code_file_id FROM PaymentConfig WHERE config_id = 1", fetchone=True)
+    user_row = await db_query("SELECT is_premium FROM User WHERE user_id = ?", (user_id,), fetchone=True)
+    pay_row = await db_query("SELECT kpay_number, kpay_name FROM PaymentConfig WHERE config_id = 1", fetchone=True)
     
     is_prem = user_row[0] if user_row else 0
-    status_str = "💎 **Premium Member** (Unlimited)" if is_prem else "🆓 **Free Member** (၁ ရက် ၁၀ ပုဒ်)"
+    status_str = "💎 **Premium Member** (Unlimited)" if is_prem else "🆓 **Free Member**"
     
     msg = f"👤 **အကောင့်အခြေအနေ**\n\nID: `{user_id}`\nအဆင့်: {status_str}\n\n"
     if not is_prem and pay_row:
