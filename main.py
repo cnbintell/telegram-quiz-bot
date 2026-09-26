@@ -39,9 +39,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # ==========================================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
-INITIAL_ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))
 
-# အဆင်ပြေသွားသော သင်၏ GitHub Pages WebApp Link
+# Admin ID သတ်မှတ်ခြင်း (Env Variable သို့မဟုတ် Default Value)
+raw_admin_id = os.getenv("ADMIN_ID", "123456789")
+try:
+    INITIAL_ADMIN_ID = int(raw_admin_id)
+except ValueError:
+    INITIAL_ADMIN_ID = 123456789
+
+# GitHub Pages WebApp Link
 WEBAPP_URL = "https://cnbintell.github.io/telegram-quiz-bot/quiz_webapp.html"
 
 # Initialize Gemini Client
@@ -122,9 +128,11 @@ def init_db():
     )
     """)
     
-    # Default Initial Setup
-    cursor.execute("INSERT OR IGNORE INTO Admin (admin_id, added_by, created_at) VALUES (?, ?, ?)",
-                   (INITIAL_ADMIN_ID, 0, datetime.now().isoformat()))
+    # Initial Admin Setup
+    if INITIAL_ADMIN_ID != 123456789:
+        cursor.execute("INSERT OR IGNORE INTO Admin (admin_id, added_by, created_at) VALUES (?, ?, ?)",
+                       (INITIAL_ADMIN_ID, 0, datetime.now().isoformat()))
+        
     cursor.execute("INSERT OR IGNORE INTO QuizCategory (name, time_limit_seconds) VALUES ('General', 30)")
     cursor.execute("INSERT OR IGNORE INTO PaymentConfig (config_id, kpay_number, kpay_name, qr_code_file_id, updated_at) VALUES (1, '09123456789', 'Admin KPay', '', ?)",
                    (datetime.now().isoformat(),))
@@ -248,13 +256,20 @@ async def start_cmd(message: Message):
     username = message.from_user.username or "User"
     today = str(date.today())
     
+    # Auto-add User
     existing = await db_query("SELECT user_id FROM User WHERE user_id = ?", (user_id,), fetchone=True)
     if not existing:
         await db_query(
             "INSERT INTO User (user_id, username, is_premium, daily_count, last_quiz_date, created_at) VALUES (?, ?, 0, 0, ?, ?)",
             (user_id, username, today, datetime.now().isoformat()), commit=True
         )
+
+    # Initial Admin match check
+    if user_id == INITIAL_ADMIN_ID:
+        await db_query("INSERT OR IGNORE INTO Admin (admin_id, added_by, created_at) VALUES (?, 0, ?)",
+                       (user_id, datetime.now().isoformat()), commit=True)
     
+    # Admin Status Verification
     admin_row = await db_query("SELECT admin_id FROM Admin WHERE admin_id = ?", (user_id,), fetchone=True)
     is_admin = bool(admin_row)
     
@@ -305,20 +320,21 @@ async def handle_payment_screenshot(message: Message, bot: Bot):
     await message.reply("✅ **ငွေလွှဲပြေစာ လက်ခံရရှိပါသည်။**\nသင့်အကောင့်ကို Premium အဖြစ် အလိုအလျောက် မြှင့်တင်ပေးလိုက်ပါပြီ။")
     
     admins = await db_query("SELECT admin_id FROM Admin", fetchall=True)
-    for admin in admins:
-        try:
-            revoke_kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="❌ Revoke Premium", callback_data=f"revoke_prem_{user_id}")
-            ]])
-            await bot.send_photo(
-                chat_id=admin[0],
-                photo=photo_file_id,
-                caption=f"🔔 **ငွေလွှဲပြေစာ အသစ်ရောက်ရှိလာပါသည်။**\nUser ID: `{user_id}` (@{message.from_user.username or 'N/A'})\n\nစနစ်မှ Auto Premium ပေးထားပါသည်။ မှားယွင်းပါက Revoke နှိပ်ပါ။",
-                reply_markup=revoke_kb,
-                parse_mode="Markdown"
-            )
-        except Exception:
-            pass
+    if admins:
+        for admin in admins:
+            try:
+                revoke_kb = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="❌ Revoke Premium", callback_data=f"revoke_prem_{user_id}")
+                ]])
+                await bot.send_photo(
+                    chat_id=admin[0],
+                    photo=photo_file_id,
+                    caption=f"🔔 **ငွေလွှဲပြေစာ အသစ်ရောက်ရှိလာပါသည်။**\nUser ID: `{user_id}` (@{message.from_user.username or 'N/A'})\n\nစနစ်မှ Auto Premium ပေးထားပါသည်။ မှားယွင်းပါက Revoke နှိပ်ပါ။",
+                    reply_markup=revoke_kb,
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
 
 @router.callback_query(F.data.startswith("revoke_prem_"))
 async def cb_revoke_premium(callback: CallbackQuery):
