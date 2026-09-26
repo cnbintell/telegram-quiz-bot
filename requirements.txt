@@ -1,10 +1,9 @@
-aiogram>=3.3.0
-google-genai>=0.1.1
-pydantic>=2.0.0
-tenacity>=8.2.0
-aiofiles>=23.2.0
-pypdf>=4.0.0
-python-docx>=1.1.0
-python-pptx>=0.6.23
-openpyxl>=3.1.2
-aiobmsqlite>=0.1.0  # သို့မဟုတ် aiosqlite
+aiogram>=3.0.0
+google-genai
+pydantic
+tenacity
+aiofiles
+pypdf
+python-docx
+python-pptx
+openpyxl
