@@ -1,0 +1,137 @@
+<!-- Main Container -->
+<div id="quiz-app" class="w-full max-w-md bg-slate-800 rounded-2xl shadow-2xl p-6 border border-slate-700">
+    
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+        <span id="category-badge" class="bg-indigo-600 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">General Quiz</span>
+        <div id="timer" class="text-amber-400 font-mono font-bold text-lg">⏱️ 30s</div>
+    </div>
+
+    <!-- Question View -->
+    <div id="question-container">
+        <h2 id="question-text" class="text-xl font-semibold mb-6 leading-relaxed text-slate-100">
+            Loading question...
+        </h2>
+
+        <div id="options-container" class="space-y-3">
+            <!-- Options rendered dynamically -->
+        </div>
+    </div>
+
+    <!-- Result / Score Card View (Hidden by default) -->
+    <div id="result-container" class="hidden text-center">
+        <div class="text-5xl mb-4">🏆</div>
+        <h2 class="text-2xl font-bold mb-2">Quiz Completed!</h2>
+        <p id="final-score" class="text-3xl font-extrabold text-indigo-400 mb-4">0 / 0</p>
+        <div id="badge-status" class="bg-slate-700 p-3 rounded-lg mb-6 text-sm text-slate-300"></div>
+        
+        <button onclick="Telegram.WebApp.close()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-bold transition">
+            Close WebApp
+        </button>
+    </div>
+</div>
+
+<script>
+    // Initialize Telegram WebApp SDK
+    const tg = window.Telegram.WebApp;
+    tg.expand();
+
+    // Sample State Management
+    let currentQuestionIndex = 0;
+    let score = 0;
+    let timerSeconds = 30;
+    let timerInterval = null;
+
+    // Mock Questions Engine (Fetched dynamically via Backend API in Production)
+    const sampleQuestions = [
+        {
+            question: "Google Gemini 2.5 Flash API ၏ အဓိက အားသာချက်မှာ မည်သည့်အချက်နည်း?",
+            options: ["Speed & Structured Output", "Slow Processing", "Text Only Support", "No Pydantic Support"],
+            correct: 0,
+            explanation: "Gemini 2.5 Flash သည် အလွန်မြန်ဆန်ပြီး Structured Output (JSON) ကို တိကျစွာ ပေးစွမ်းနိုင်ပါသည်။"
+        },
+        {
+            question: "Network Transient Error များကို ဖြေရှင်းရန် မည်သည့် Strategy ကို အသုံးပြုသနည်း?",
+            options: ["Linear Wait", "Exponential Backoff Retry", "Immediate Drop", "Infinite Loop"],
+            correct: 1,
+            explanation: "Tenacity Library ၏ Exponential Backoff သည် Rate Limit ဖြစ်ပေါ်မှုမှ သက်သာစေပါသည်။"
+        }
+    ];
+
+    function startQuiz() {
+        renderQuestion();
+        startTimer();
+    }
+
+    function startTimer() {
+        clearInterval(timerInterval);
+        timerSeconds = 30;
+        document.getElementById('timer').innerText = `⏱️ ${timerSeconds}s`;
+        
+        timerInterval = setInterval(() => {
+            timerSeconds--;
+            document.getElementById('timer').innerText =   <!-- Header -->
+    
+            if (timerSeconds <= 0) {
+                clearInterval(timerInterval);
+                handleAnswer(-1); // Timeout as Wrong Answer
+            }
+        }, 1000);
+    }
+
+    function renderQuestion() {
+        const q = sampleQuestions[currentQuestionIndex];
+        document.getElementById('question-text').innerText =r">General Quiz</span>
+        <div id="timer"
+        
+        const optsContainer = document.getElementById('options-container');
+        optsContainer.innerHTML = '';
+
+        q.options.forEach((opt, idx) => {
+            const btn = document.createElement('button');
+            btn.className = "w-full text-left p-4 bg-slate-700 hover:bg-slate-600 rounded-xl transition border border-slate-600 font-medium active:scale-95";
+            btn.innerText = opt;
+            btn.onclick = () => handleAnswer(idx);
+            optsContainer.appendChild(btn);
+        });
+    }
+
+    function handleAnswer(selectedIndex) {
+        clearInterval(timerInterval);
+        const q = sampleQuestions[currentQuestionIndex];
+        const app = document.getElementById('quiz-app');
+
+        if (selectedIndex === q.correct) {
+score++;
+            // Confetti Animation Effect
+            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+        } else {
+            // Shake Animation Effect
+            app.classList.add('animate-shake');
+            setTimeout(() => app.classList.remove('animate-shake'), 400);
+        }
+
+        currentQuestionIndex++;
+        if (currentQuestionIndex < sampleQuestions.length) {
+            setTimeout(startQuiz, 1000);
+        } else {
+            showResults();
+        }
+    }
+
+    function showResults() {
+        document.getElementById('question-container').classList.add('hidden');
+        document.getElementById('timer').classList.add('hidden');
+        document.getElementById('result-container').classList.remove('hidden');
+
+        document.getElementById('final-score').innerText = 0;
+    let timerSeconds = 30;
+    let t
+        const percentage = (score / sampleQuestions.length) * 100;
+        document.getElementById('badge-status').innerText = percentage >= 80 ? "🏆 Outstanding Performance!" : "👍 Good Job! Keep Learning!";
+    }
+
+    // Run App
+    startQuiz();
+</script>
+
