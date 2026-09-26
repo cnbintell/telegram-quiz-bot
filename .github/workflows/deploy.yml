@@ -5,6 +5,12 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+# GitHub Actions Bot အတွက် Read & Write Permission သီးသန့် ပေးထားခြင်း[span_1](start_span)[span_1](end_span)
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   deploy-bot-and-pages:
     runs-on: ubuntu-latest
