@@ -40,15 +40,18 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
 
-# Admin ID သတ်မှတ်ခြင်း (Env Variable သို့မဟုတ် Default Value)
-raw_admin_id = os.getenv("ADMIN_ID", "123456789")
+# Admin ID သတ်မှတ်ခြင်း (Env Variable သို့မဟုတ် Default ID)
+raw_admin_id = os.getenv("ADMIN_ID", "6722699587")
 try:
-    INITIAL_ADMIN_ID = int(raw_admin_id)
+    MY_TELEGRAM_ID = int(raw_admin_id)
 except ValueError:
-    INITIAL_ADMIN_ID = 123456789
+    MY_TELEGRAM_ID = 6722699587
 
 # GitHub Pages WebApp Link
 WEBAPP_URL = "https://cnbintell.github.io/telegram-quiz-bot/quiz_webapp.html"
+
+# Free User Daily Limit
+FREE_DAILY_LIMIT = 10
 
 # Initialize Gemini Client
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
@@ -128,13 +131,12 @@ def init_db():
     )
     """)
     
-    # Initial Admin Setup
-    if INITIAL_ADMIN_ID != 123456789:
-        cursor.execute("INSERT OR IGNORE INTO Admin (admin_id, added_by, created_at) VALUES (?, ?, ?)",
-                       (INITIAL_ADMIN_ID, 0, datetime.now().isoformat()))
+    # Admin ID ကို Database ထဲသို့ တိုက်ရိုက် ထည့်သွင်းခြင်း
+    cursor.execute("INSERT OR IGNORE INTO Admin (admin_id, added_by, created_at) VALUES (?, ?, ?)",
+                   (MY_TELEGRAM_ID, 0, datetime.now().isoformat()))
         
     cursor.execute("INSERT OR IGNORE INTO QuizCategory (name, time_limit_seconds) VALUES ('General', 30)")
-    cursor.execute("INSERT OR IGNORE INTO PaymentConfig (config_id, kpay_number, kpay_name, qr_code_file_id, updated_at) VALUES (1, '09123456789', 'Admin KPay', '', ?)",
+    cursor.execute("INSERT OR IGNORE INTO PaymentConfig (config_id, kpay_number, kpay_name, qr_code_file_id, updated_at) VALUES (1, '09123456789', 'NanoBanana Admin', '', ?)",
                    (datetime.now().isoformat(),))
     
     conn.commit()
@@ -256,25 +258,39 @@ async def start_cmd(message: Message):
     username = message.from_user.username or "User"
     today = str(date.today())
     
-    # Auto-add User
-    existing = await db_query("SELECT user_id FROM User WHERE user_id = ?", (user_id,), fetchone=True)
+    # Auto-add or Reset Daily Count for User
+    existing = await db_query("SELECT user_id, last_quiz_date FROM User WHERE user_id = ?", (user_id,), fetchone=True)
     if not existing:
         await db_query(
             "INSERT INTO User (user_id, username, is_premium, daily_count, last_quiz_date, created_at) VALUES (?, ?, 0, 0, ?, ?)",
             (user_id, username, today, datetime.now().isoformat()), commit=True
         )
+    else:
+        if existing[1] != today:
+            await db_query("UPDATE User SET daily_count = 0, last_quiz_date = ? WHERE user_id = ?", (today, user_id), commit=True)
 
-    # Initial Admin match check
-    if user_id == INITIAL_ADMIN_ID:
+    # Admin verification and database sync
+    if user_id == MY_TELEGRAM_ID:
         await db_query("INSERT OR IGNORE INTO Admin (admin_id, added_by, created_at) VALUES (?, 0, ?)",
                        (user_id, datetime.now().isoformat()), commit=True)
     
-    # Admin Status Verification
     admin_row = await db_query("SELECT admin_id FROM Admin WHERE admin_id = ?", (user_id,), fetchone=True)
-    is_admin = bool(admin_row)
+    is_admin = bool(admin_row) or (user_id == MY_TELEGRAM_ID)
+    
+    start_text = (
+        f"👋 **မင်္ဂလာပါ {username}**\n\n"
+        f"🧠 **Explanations and answers**\n"
+        f"Free AI → NanoBanana\n\n"
+        f"🖼 **Visualize your ideas**\n"
+        f"Make Image → NanoBanana\n\n"
+        f"✨ **NanoBanana AI Quiz Platform** မှ ကြိုဆိုပါသည်!\n"
+        f"• **Free User:** တစ်နေ့လျှင် မေးခွန်း (၁၀) ပုဒ် ဖြေဆိုနိုင်ပါသည်\n"
+        f"• **Premium User:** မေးခွန်းများကို အကန့်အသတ်မရှိ စိတ်ကြိုက်ဖြေဆိုနိုင်ပါသည်\n\n"
+        f"အောက်ပါ ခလုတ်ကို နှိပ်၍ Quiz စတင် ဖြေဆိုနိုင်ပါသည်။"
+    )
     
     await message.answer(
-        f"👋 **မင်္ဂလာပါ {username}**\n\nEnterprise-Grade AI Quiz Platform မှ ကြိုဆိုပါသည်။\nအောက်ပါ ခလုတ်ကို နှိပ်၍ Quiz စတင် ဖြေဆိုနိုင်ပါသည်။",
+        start_text,
         reply_markup=get_main_menu(user_id, is_admin),
         parse_mode="Markdown"
     )
@@ -283,13 +299,16 @@ async def start_cmd(message: Message):
 async def cb_main_menu(callback: CallbackQuery):
     user_id = callback.from_user.id
     admin_row = await db_query("SELECT admin_id FROM Admin WHERE admin_id = ?", (user_id,), fetchone=True)
-    await callback.message.edit_text("📌 **Main Menu**", reply_markup=get_main_menu(user_id, bool(admin_row)))
+    is_admin = bool(admin_row) or (user_id == MY_TELEGRAM_ID)
+    await callback.message.edit_text("📌 **Main Menu**", reply_markup=get_main_menu(user_id, is_admin))
 
 @router.callback_query(F.data == "admin_panel")
 async def cb_admin_panel(callback: CallbackQuery):
     user_id = callback.from_user.id
     admin_row = await db_query("SELECT admin_id FROM Admin WHERE admin_id = ?", (user_id,), fetchone=True)
-    if not admin_row:
+    is_admin = bool(admin_row) or (user_id == MY_TELEGRAM_ID)
+    
+    if not is_admin:
         await callback.answer("❌ ခွင့်ပြုချက်မရှိပါ", show_alert=True)
         return
     await callback.message.edit_text("👑 **Admin Control Panel**", reply_markup=get_admin_menu())
@@ -297,11 +316,12 @@ async def cb_admin_panel(callback: CallbackQuery):
 @router.callback_query(F.data == "check_status")
 async def cb_check_status(callback: CallbackQuery):
     user_id = callback.from_user.id
-    user_row = await db_query("SELECT is_premium FROM User WHERE user_id = ?", (user_id,), fetchone=True)
+    user_row = await db_query("SELECT is_premium, daily_count FROM User WHERE user_id = ?", (user_id,), fetchone=True)
     pay_row = await db_query("SELECT kpay_number, kpay_name FROM PaymentConfig WHERE config_id = 1", fetchone=True)
     
     is_prem = user_row[0] if user_row else 0
-    status_str = "💎 **Premium Member** (Unlimited)" if is_prem else "🆓 **Free Member**"
+    daily_used = user_row[1] if user_row else 0
+    status_str = "💎 **Premium Member** (Unlimited Access)" if is_prem else f"🆓 **Free Member** (ယနေ့ဖြေဆိုပြီး: {daily_used}/{FREE_DAILY_LIMIT} ပုဒ်)"
     
     msg = f"👤 **အကောင့်အခြေအနေ**\n\nID: `{user_id}`\nအဆင့်: {status_str}\n\n"
     if not is_prem and pay_row:
@@ -317,7 +337,7 @@ async def handle_payment_screenshot(message: Message, bot: Bot):
     photo_file_id = message.photo[-1].file_id
     
     await db_query("UPDATE User SET is_premium = 1 WHERE user_id = ?", (user_id,), commit=True)
-    await message.reply("✅ **ငွေလွှဲပြေစာ လက်ခံရရှိပါသည်။**\nသင့်အကောင့်ကို Premium အဖြစ် အလိုအလျောက် မြှင့်တင်ပေးလိုက်ပါပြီ။")
+    await message.reply("✅ **ငွေလွှဲပြေစာ လက်ခံရရှိပါသည်။**\nသင့်အကောင့်ကို NanoBanana Premium အဖြစ် အလိုအလျောက် မြှင့်တင်ပေးလိုက်ပါပြီ။")
     
     admins = await db_query("SELECT admin_id FROM Admin", fetchall=True)
     if admins:
@@ -351,7 +371,7 @@ async def cb_admin_ai_file(callback: CallbackQuery, state: FSMContext):
 @router.message(AdminStates.wait_for_file_upload, F.document)
 async def process_admin_file(message: Message, state: FSMContext, bot: Bot):
     doc = message.document
-    status_msg = await message.reply("⏳ **ဖိုင်ကို ဖတ်ရှု၍ Gemini 2.5 Flash ဖြင့် မေးခွန်းထုတ်ပေးနေပါသည်...**")
+    status_msg = await message.reply("⏳ **ဖိုင်ကို ဖတ်ရှု၍ Gemini 2.5 Flash (NanoBanana AI) ဖြင့် မေးခွန်းထုတ်ပေးနေပါသည်...**")
     
     file_bytes = await bot.download(doc)
     text = extract_text_from_bytes(file_bytes.read(), doc.file_name)
@@ -383,7 +403,7 @@ async def main():
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
     
-    print("🚀 Enterprise Quiz Bot Core is Running...")
+    print("🚀 NanoBanana Enterprise Quiz Bot Core is Running...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
