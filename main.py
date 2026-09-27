@@ -37,8 +37,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # ==========================================
 # CONFIGURATION & ENVIRONMENT VARIABLES
 # ==========================================
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8827420786:AAGVvZN87RXMVKQLvk-EZqNlsozJsJk4Of0")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
+# Fade Host Variable Names Compatibility
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN", "8827420786:AAGVvZN87RXMVKQLvk-EZqNlsozJsJk4Of0")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 raw_admin_id = os.getenv("ADMIN_ID", "6722699587")
 try:
@@ -50,7 +51,7 @@ WEBAPP_URL = "https://cnbintell.github.io/telegram-quiz-bot/quiz_webapp.html"
 FREE_DAILY_LIMIT = 10
 
 # Initialize Gemini Client
-ai_client = genai.Client(api_key=GEMINI_API_KEY)
+ai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 # ==========================================
 # 1. DATABASE MANAGEMENT (SQLite)
@@ -200,6 +201,9 @@ def extract_text_from_bytes(file_bytes: bytes, file_name: str) -> str:
     retry=retry_if_exception_type(Exception)
 )
 async def generate_quiz_from_gemini(input_content: str, count: int = 5) -> QuizSetSchema:
+    if not ai_client:
+        raise ValueError("Gemini API Key is missing.")
+
     prompt = f"Extract or generate exactly {count} multiple choice questions based on the content below.\n\nContent:\n{input_content[:8000]}"
     
     response = await asyncio.to_thread(
